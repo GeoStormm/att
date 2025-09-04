@@ -1,60 +1,60 @@
 'use client'
 
-import { motion } from 'framer-motion'
 import { LucideIcon } from 'lucide-react'
+import { motion } from 'framer-motion'
 
 interface StatCardProps {
   title: string
-  value: string | number
+  value: string
   icon: LucideIcon
-  color: 'primary' | 'success' | 'warning' | 'danger'
-  change?: {
-    value: number
-    isPositive: boolean
-  }
+  trend?: string
+  trendUp?: boolean
+  color?: 'blue' | 'green' | 'purple' | 'orange' | 'emerald' | 'indigo' | 'red'
 }
 
 const colorClasses = {
-  primary: 'bg-primary-50 text-primary-600 border-primary-200',
-  success: 'bg-success-50 text-success-600 border-success-200',
-  warning: 'bg-warning-50 text-warning-600 border-warning-200',
-  danger: 'bg-danger-50 text-danger-600 border-danger-200',
+  blue: 'text-blue-600 bg-blue-100',
+  green: 'text-green-600 bg-green-100',
+  purple: 'text-purple-600 bg-purple-100',
+  orange: 'text-orange-600 bg-orange-100',
+  emerald: 'text-emerald-600 bg-emerald-100',
+  indigo: 'text-indigo-600 bg-indigo-100',
+  red: 'text-red-600 bg-red-100'
 }
 
-const iconColorClasses = {
-  primary: 'bg-primary-100',
-  success: 'bg-success-100',
-  warning: 'bg-warning-100',
-  danger: 'bg-danger-100',
-}
-
-export default function StatCard({ title, value, icon: Icon, color, change }: StatCardProps) {
+export default function StatCard({ title, value, icon: Icon, trend, trendUp, color = 'blue' }: StatCardProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="card hover:shadow-md transition-shadow duration-200"
+      whileHover={{ y: -4 }}
+      className="card hover:shadow-lg transition-all duration-200 cursor-pointer"
     >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-          {change && (
-            <div className="flex items-center mt-2">
-              <span
-                className={`text-sm font-medium ${
-                  change.isPositive ? 'text-success-600' : 'text-danger-600'
-                }`}
-              >
-                {change.isPositive ? '+' : ''}{change.value}%
-              </span>
-              <span className="text-sm text-gray-500 ml-1">from last week</span>
-            </div>
-          )}
-        </div>
-        <div className={`p-3 rounded-lg ${iconColorClasses[color]}`}>
-          <Icon className={`w-6 h-6 ${colorClasses[color]}`} />
+      <div className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
+            <p className="text-3xl font-bold text-gray-900">{value}</p>
+            {trend && (
+              <div className="flex items-center mt-2">
+                <span className={`text-sm font-medium ${
+                  trendUp ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {trend}
+                </span>
+                {trend !== 'Live' && (
+                  <motion.div
+                    animate={{ y: trendUp ? [-2, 2, -2] : [2, -2, 2] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className={`ml-1 w-2 h-2 rounded-full ${
+                      trendUp ? 'bg-green-600' : 'bg-red-600'
+                    }`}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+          <div className={`p-3 rounded-full ${colorClasses[color]}`}>
+            <Icon className="h-8 w-8" />
+          </div>
         </div>
       </div>
     </motion.div>

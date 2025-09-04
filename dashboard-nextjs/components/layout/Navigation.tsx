@@ -10,7 +10,9 @@ import {
   BarChart3, 
   Settings,
   Menu,
-  X
+  X,
+  BookOpen,
+  FileText
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -20,6 +22,9 @@ const navigation = [
   { name: 'Timetable', href: '/timetable', icon: Calendar },
   { name: 'Students', href: '/students', icon: Users },
   { name: 'Professors', href: '/professors', icon: GraduationCap },
+  { name: 'Classrooms', href: '/classrooms', icon: Calendar },
+  { name: 'Courses', href: '/courses', icon: BookOpen },
+  { name: 'Attendance', href: '/attendance', icon: FileText },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
@@ -30,41 +35,54 @@ export default function Navigation() {
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          {/* Logo and Desktop Navigation */}
-          <div className="flex items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3 }}
-              className="flex-shrink-0 flex items-center"
-            >
-              <GraduationCap className="h-8 w-8 text-primary-600" />
-              <span className="ml-2 text-xl font-bold text-gray-900">
-                Attendance System
-              </span>
-            </motion.div>
-            
-            <div className="hidden md:ml-8 md:flex md:space-x-8">
-              {navigation.map((item) => {
-                const isActive = pathname === item.href
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`inline-flex items-center px-1 pt-1 text-sm font-medium transition-colors duration-200 ${
-                      isActive
-                        ? 'text-primary-600 border-b-2 border-primary-600'
-                        : 'text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 border-transparent'
-                    }`}
-                  >
-                    <item.icon className="h-4 w-4 mr-2" />
-                    {item.name}
-                  </Link>
-                )
-              })}
-            </div>
-          </div>
+                 <div className="flex h-16">
+           {/* Logo - positioned at far left */}
+           <div className="flex items-center flex-shrink-0">
+             <motion.div
+               initial={{ opacity: 0, x: -20 }}
+               animate={{ opacity: 1, x: 0 }}
+               transition={{ duration: 0.3 }}
+               className="flex-shrink-0 flex items-center"
+             >
+               {/* University Logo */}
+               <img 
+                 src="/logo.png" 
+                 alt="University Logo" 
+                 className="h-12 w-auto"
+                 onError={(e) => {
+                   // Fallback to icon if logo fails to load
+                   e.currentTarget.style.display = 'none'
+                   const nextElement = e.currentTarget.nextElementSibling as HTMLElement
+                   if (nextElement) nextElement.style.display = 'block'
+                 }}
+               />
+               <GraduationCap className="h-12 w-12 text-primary-600 hidden" />
+             </motion.div>
+           </div>
+
+           {/* Navigation Tabs - positioned after logo */}
+           <div className="hidden md:flex md:space-x-8 ml-8 items-center">
+             {navigation.map((item) => {
+               const isActive = pathname === item.href
+               return (
+                 <Link
+                   key={item.name}
+                   href={item.href}
+                   className={`inline-flex items-center px-1 pt-1 text-sm font-medium transition-colors duration-200 ${
+                     isActive
+                       ? 'text-primary-600 border-b-2 border-primary-600'
+                       : 'text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 border-transparent'
+                   }`}
+                 >
+                   <item.icon className="h-4 w-4 mr-2" />
+                   {item.name}
+                 </Link>
+               )
+             })}
+           </div>
+
+           {/* Spacer to push mobile menu button to right */}
+           <div className="flex-1"></div>
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center">

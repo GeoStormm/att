@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import { Activity, Clock } from 'lucide-react'
 import { motion } from 'framer-motion'
 import StatusBadge from '@/components/ui/StatusBadge'
+import ClassroomStatus from '@/components/ClassroomStatus'
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([])
@@ -50,6 +51,9 @@ export default function SessionsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Sessions</h1>
       </div>
+
+      {/* Classroom Status */}
+      <ClassroomStatus />
 
       <div className="card">
         <div className="card-header">
@@ -100,8 +104,8 @@ export default function SessionsPage() {
                           <td className="font-medium">{(s as any).professor?.name}</td>
                           <td>{s.subject || 'Class Session'}</td>
                           <td>{(s as any).classroom?.name}</td>
-                          <td>{format(new Date(s.start_time), 'PPp')}</td>
-                          <td>{s.end_time ? format(new Date(s.end_time), 'PPp') : '-'}</td>
+                          <td>{format(new Date(s.start_time), 'dd MMM yyyy, HH:mm')}</td>
+                          <td>{s.end_time ? format(new Date(s.end_time), 'dd MMM yyyy, HH:mm') : '-'}</td>
                           <td className="text-right">
                             <Link href={`/sessions/${s.id}`} className="btn btn-primary">
                               View attendance

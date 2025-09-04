@@ -318,7 +318,7 @@ bool startProfessorSession(String rfidTag) {
   DynamicJsonDocument doc(1024);
   doc["p_professor_rfid"] = rfidTag;
   doc["p_classroom_device_id"] = deviceId;
-  doc["p_subject"] = "Class Session";
+  doc["p_subject"] = ""; // Let database function determine subject from timetable
   doc["p_late_threshold"] = 1;
   
   String jsonString;
@@ -341,6 +341,7 @@ bool startProfessorSession(String rfidTag) {
     if (responseDoc["success"] == true) {
       Serial.println("Professor: " + responseDoc["professor_name"].as<String>());
       Serial.println("Classroom: " + responseDoc["classroom_name"].as<String>());
+      Serial.println("Subject: " + responseDoc["subject"].as<String>());
       Serial.println("Session ID: " + responseDoc["session_id"].as<String>());
       http.end();
       return true;
