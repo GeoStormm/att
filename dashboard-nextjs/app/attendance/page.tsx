@@ -61,122 +61,138 @@ export default function AttendancePage() {
   const loadData = async () => {
     setLoading(true)
     try {
-      // Get all courses with their enrollment counts
-      const { data: coursesData, error: coursesError } = await supabase
-        .from('courses')
-        .select('id, name')
-        .order('name')
+      // Get all sessions with attendance data (both active and ended)
+      const { data: sessionsData, error: sessionsError } = await supabase
+        .from('sessions')
+        .select(`
+          id,
+          subject,
+          start_time,
+          end_time,
+          status,
+          professor:professors(name),
+          classroom:classrooms(name)
+        `)
+        .in('status', ['active', 'ended'])
+        .order('start_time', { ascending: false })
 
-      if (coursesError) throw coursesError
+      if (sessionsError) throw sessionsError
 
-      const courseAttendanceData: CourseAttendance[] = []
+      // Debug: Check what data we have
+      console.log('Raw sessions data:', sessionsData)
+      
+      // Also check attendance records
+      const { data: attendanceData } = await supabase
+        .from('attendance')
+        .select('id, session_id, status, timestamp')
+        .limit(10)
+      console.log('Sample attendance records:', attendanceData)
 
-      // Process each course
-      for (const course of coursesData || []) {
-        // Get total enrolled students for this course
-        const { count: enrolledCount } = await supabase
-          .from('course_enrollments')
-          .select('*', { count: 'exact', head: true })
-          .eq('course_id', course.id)
+      // Group sessions by subject (course)
+      const courseMap = new Map<string, CourseAttendance>()
 
-        if (enrolledCount && enrolledCount > 0) {
-          // Get all sessions for this course
-          const { data: sessionsData } = await supabase
-            .from('sessions')
-            .select(`
-              id,
-              subject,
-              start_time,
-              end_time,
-              status,
-              professor:professors(name),
-              classroom:classrooms(name)
-            `)
-            .eq('status', 'ended')
-            .order('start_time', { ascending: false })
-
-          // Get attendance data for all sessions
-          let totalPresent = 0
-          let totalLate = 0
-          let totalAbsent = 0
-          let totalSessions = 0
-          let lastSessionDate: string | null = null
-          const sessionSummaries: SessionSummary[] = []
-
-          for (const session of sessionsData || []) {
-            // Check if this session has course enrollment data
-            const { data: rosterData } = await supabase
-              .from('session_roster')
-              .select('course_id')
-              .eq('session_id', session.id)
-              .eq('course_id', course.id)
-              .limit(1)
-
-            if (rosterData && rosterData.length > 0) {
-              // Get attendance for this session
-              const { data: attendanceData } = await supabase
-                .from('attendance')
-                .select('status')
-                .eq('session_id', session.id)
-
-              const presentCount = attendanceData?.filter(a => a.status === 'present').length || 0
-              const lateCount = attendanceData?.filter(a => a.status === 'late').length || 0
-              const actualAbsentCount = attendanceData?.filter(a => a.status === 'absent').length || 0
-              
-              // Calculate real absent count: enrolled students - (present + late)
-              const realAbsentCount = Math.max(0, enrolledCount - (presentCount + lateCount))
-
-              totalPresent += presentCount
-              totalLate += lateCount
-              totalAbsent += realAbsentCount
-              totalSessions++
-
-              if (!lastSessionDate || session.start_time > lastSessionDate) {
-                lastSessionDate = session.start_time
-              }
-
-              sessionSummaries.push({
-                sessionId: session.id,
-                subject: session.subject || 'Class Session',
-                date: session.start_time,
-                professor: (session.professor as any)?.name || 'Unknown',
-                classroom: (session.classroom as any)?.name || 'Unknown',
-                presentCount,
-                lateCount,
-                absentCount: realAbsentCount,
-                totalEnrolled: enrolledCount,
-                attendanceRate: Math.round(((presentCount + lateCount) / enrolledCount) * 100)
-              })
-            }
-          }
-
-          if (totalSessions > 0) {
-            // Calculate total possible attendance (enrolled students × sessions)
-            const totalPossibleAttendance = enrolledCount * totalSessions
-            const totalActualAttendance = totalPresent + totalLate
-            const totalAbsentees = totalPossibleAttendance - totalActualAttendance
-            
-            // Calculate overall attendance rate
-            const overallAttendanceRate = totalPossibleAttendance > 0 ? 
-              Math.round((totalActualAttendance / totalPossibleAttendance) * 100) : 0
-
-            courseAttendanceData.push({
-              courseId: course.id,
-              courseName: course.name,
-              totalEnrolled: enrolledCount,
-              totalSessions,
-              presentCount: totalPresent,
-              lateCount: totalLate,
-              absentCount: totalAbsentees, // Use calculated absentees instead of database count
-              attendanceRate: overallAttendanceRate,
-              lastSession: lastSessionDate,
-              sessions: sessionSummaries
-            })
-          }
+      for (const session of sessionsData || []) {
+        const subject = session.subject || 'Class Session'
+        
+        if (!courseMap.has(subject)) {
+          courseMap.set(subject, {
+            courseId: `course_${subject.replace(/\s+/g, '_').toLowerCase()}`,
+            courseName: subject,
+            totalEnrolled: 0,
+            totalSessions: 0,
+            presentCount: 0,
+            lateCount: 0,
+            absentCount: 0,
+            attendanceRate: 0,
+            lastSession: null,
+            sessions: []
+          })
         }
+
+        const course = courseMap.get(subject)!
+
+        // Get attendance for this session
+        const { data: attendanceData } = await supabase
+          .from('attendance')
+          .select(`
+            status,
+            student:students(name, student_number, program)
+          `)
+          .eq('session_id', session.id)
+
+        const presentCount = attendanceData?.filter(a => a.status === 'present').length || 0
+        const lateCount = attendanceData?.filter(a => a.status === 'late').length || 0
+        const totalAttended = presentCount + lateCount
+
+        // Update course totals
+        course.totalSessions++
+        course.presentCount += presentCount
+        course.lateCount += lateCount
+        
+        if (!course.lastSession || session.start_time > course.lastSession) {
+          course.lastSession = session.start_time
+        }
+
+        // Add session summary
+        course.sessions.push({
+          sessionId: session.id,
+          subject: session.subject || 'Class Session',
+          date: session.start_time,
+          professor: (session.professor as any)?.name || 'Unknown',
+          classroom: (session.classroom as any)?.name || 'Unknown',
+          presentCount,
+          lateCount,
+          absentCount: 0, // We'll calculate this later
+          totalEnrolled: totalAttended, // For now, use attended count as enrolled
+          attendanceRate: 100 // Since we only count those who attended
+        })
+      }
+
+      // Calculate final statistics for each course
+      const courseAttendanceData: CourseAttendance[] = []
+      for (const course of Array.from(courseMap.values())) {
+        // Calculate total enrolled as the maximum number of students who attended any session
+        course.totalEnrolled = Math.max(...course.sessions.map((s: SessionSummary) => s.totalEnrolled), 0)
+        
+        // Calculate absent count for each session
+        course.sessions.forEach((session: SessionSummary) => {
+          session.absentCount = Math.max(0, course.totalEnrolled - (session.presentCount + session.lateCount))
+        })
+        
+        // Calculate overall attendance rate
+        const totalPossibleAttendance = course.totalEnrolled * course.totalSessions
+        const totalActualAttendance = course.presentCount + course.lateCount
+        course.attendanceRate = totalPossibleAttendance > 0 ? 
+          Math.round((totalActualAttendance / totalPossibleAttendance) * 100) : 0
+        
+        // Calculate total absent count
+        course.absentCount = Math.max(0, totalPossibleAttendance - totalActualAttendance)
+        
+        courseAttendanceData.push(course)
       }
 
       setCourses(courseAttendanceData)
+      
+      // Debug logging
+      console.log('Loaded attendance data:', {
+        totalSessions: sessionsData?.length || 0,
+        totalCourses: courseAttendanceData.length,
+        sessions: sessionsData?.map(s => ({
+          id: s.id,
+          subject: s.subject,
+          status: s.status,
+          professor: (s.professor as any)?.name,
+          classroom: (s.classroom as any)?.name
+        })),
+        courses: courseAttendanceData.map(c => ({
+          name: c.courseName,
+          sessions: c.totalSessions,
+          enrolled: c.totalEnrolled,
+          present: c.presentCount,
+          late: c.lateCount,
+          absent: c.absentCount
+        }))
+      })
     } catch (error) {
       console.error('Error loading attendance data:', error)
     } finally {
@@ -217,62 +233,43 @@ export default function AttendancePage() {
 
   const loadSessionStudents = async (sessionId: string) => {
     try {
-      // Get all enrolled students for this session
-      const { data: rosterData } = await supabase
-        .from('session_roster')
-        .select('course_id')
+      // Get attendance records for this session with student details
+      const { data: attendanceData } = await supabase
+        .from('attendance')
+        .select(`
+          student_id,
+          status,
+          timestamp,
+          student:students(id, name, student_number, program)
+        `)
         .eq('session_id', sessionId)
-        .limit(1)
 
-      if (rosterData && rosterData.length > 0) {
-        const courseId = rosterData[0].course_id
+      // Create student attendance list
+      const students: StudentAttendance[] = []
+      
+      for (const attendance of attendanceData || []) {
+        const student = attendance.student as any
         
-        // Get all enrolled students
-        const { data: enrolledData } = await supabase
-          .from('course_enrollments')
-          .select(`
-            student:students(id, name, student_number, program)
-          `)
-          .eq('course_id', courseId)
-
-        // Get attendance records for this session
-        const { data: attendanceData } = await supabase
-          .from('attendance')
-          .select(`
-            student_id,
-            status,
-            timestamp
-          `)
-          .eq('session_id', sessionId)
-
-        // Create student attendance list
-        const students: StudentAttendance[] = []
-        
-        for (const enrollment of enrolledData || []) {
-          const student = enrollment.student as any
-          const attendance = attendanceData?.find(a => a.student_id === student.id)
-          
-          students.push({
-            studentId: student.id,
-            studentName: student.name,
-            studentNumber: student.student_number,
-            program: student.program,
-            status: attendance?.status || 'absent',
-            timestamp: attendance?.timestamp || null
-          })
-        }
-
-        // Sort by status: present, late, absent
-        students.sort((a, b) => {
-          const statusOrder = { present: 0, late: 1, absent: 2 }
-          return statusOrder[a.status] - statusOrder[b.status]
+        students.push({
+          studentId: student.id,
+          studentName: student.name,
+          studentNumber: student.student_number,
+          program: student.program,
+          status: attendance.status,
+          timestamp: attendance.timestamp
         })
-
-        setSessionStudents(prev => ({
-          ...prev,
-          [sessionId]: students
-        }))
       }
+
+      // Sort by status: present, late, absent
+      students.sort((a, b) => {
+        const statusOrder = { present: 0, late: 1, absent: 2 }
+        return statusOrder[a.status] - statusOrder[b.status]
+      })
+
+      setSessionStudents(prev => ({
+        ...prev,
+        [sessionId]: students
+      }))
     } catch (error) {
       console.error('Error loading session students:', error)
     }
@@ -354,14 +351,55 @@ export default function AttendancePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Course Attendance Overview</h1>
-        <button 
-          onClick={exportAllData}
-          className="btn btn-primary"
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Export All Data
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={loadData}
+            className="btn btn-secondary"
+            disabled={loading}
+          >
+            {loading ? 'Loading...' : 'Refresh'}
+          </button>
+          <button 
+            onClick={exportAllData}
+            className="btn btn-primary"
+            disabled={courses.length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export All Data
+          </button>
+        </div>
       </div>
+
+      {/* Debug Information */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-blue-50 border border-blue-200 rounded-lg p-4"
+      >
+        <h3 className="text-sm font-semibold text-blue-800 mb-2">🔍 Debug Information</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-blue-700">
+          <div>
+            <strong>Data Summary:</strong><br/>
+            Total Courses: {courses.length}<br/>
+            Total Sessions: {courses.reduce((sum, c) => sum + c.totalSessions, 0)}<br/>
+            Total Students: {courses.reduce((sum, c) => sum + c.totalEnrolled, 0)}
+          </div>
+          <div>
+            <strong>Attendance Summary:</strong><br/>
+            Total Present: {courses.reduce((sum, c) => sum + c.presentCount, 0)}<br/>
+            Total Late: {courses.reduce((sum, c) => sum + c.lateCount, 0)}<br/>
+            Total Absent: {courses.reduce((sum, c) => sum + c.absentCount, 0)}
+          </div>
+          <div>
+            <strong>Course Details:</strong><br/>
+            {courses.length === 0 ? 'No courses found' : courses.map(c => (
+              <div key={c.courseId}>
+                {c.courseName}: {c.totalSessions} sessions, {c.totalEnrolled} enrolled
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
 
       {/* Overall Statistics */}
       <motion.div 
