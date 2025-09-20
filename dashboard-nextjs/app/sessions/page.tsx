@@ -55,6 +55,59 @@ export default function SessionsPage() {
       {/* Classroom Status */}
       <ClassroomStatus />
 
+      {/* Subject Detection Status */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-blue-50 border border-blue-200 rounded-lg p-4"
+      >
+        <h3 className="text-sm font-semibold text-blue-800 mb-2">📚 Subject Detection Status</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-blue-700">
+          <div>
+            <strong>Active Sessions:</strong><br/>
+            {sessions.filter(s => s.status === 'active').length} currently active<br/>
+            {sessions.filter(s => s.status === 'active' && (s.subject === 'Class Session' || s.subject === 'General Class Session')).length} need subject update
+          </div>
+          <div>
+            <strong>Subject Detection:</strong><br/>
+            {sessions.filter(s => s.status === 'active' && s.subject && s.subject !== 'Class Session' && s.subject !== 'General Class Session').length} properly detected<br/>
+            {sessions.filter(s => s.status === 'active' && s.subject && s.subject !== 'Class Session' && s.subject !== 'General Class Session').map(s => s.subject).join(', ')}
+          </div>
+        </div>
+        <div className="mt-3 space-x-2">
+          <button 
+            onClick={async () => {
+              try {
+                const { data, error } = await supabase.rpc('fix_session_subjects')
+                if (error) throw error
+                alert(`✅ Fixed ${data.updated_sessions} session subjects`)
+                await load()
+              } catch (err: any) {
+                alert(`❌ Error: ${err.message}`)
+              }
+            }}
+            className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded"
+          >
+            🔧 Fix Session Subjects
+          </button>
+          <button 
+            onClick={async () => {
+              try {
+                const { data, error } = await supabase.rpc('fix_existing_sessions_absent_students')
+                if (error) throw error
+                alert(`✅ Fixed ${data.fixed_sessions} sessions with absent students`)
+                await load()
+              } catch (err: any) {
+                alert(`❌ Error: ${err.message}`)
+              }
+            }}
+            className="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded"
+          >
+            👥 Fix Absent Students
+          </button>
+        </div>
+      </motion.div>
+
       <div className="card">
         <div className="card-header">
           <h2 className="card-title flex items-center gap-2">

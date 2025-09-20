@@ -49,30 +49,53 @@ export default function SessionDetail() {
         .eq('session_id', sessionId)
         .order('timestamp', { ascending: true })
 
-      // Load enrolled students for this course
-      let courseId = null
+      // Debug logging for attendance data
+      console.log('Attendance Data Loaded:', {
+        sessionId,
+        attendanceRecords: attendanceData?.length || 0,
+        records: attendanceData?.map(a => ({
+          student_id: a.student_id,
+          status: a.status,
+          student_name: a.student?.name
+        })) || []
+      })
+
+      // Load enrolled students for this session
       if (sessionData) {
-        // Try to get course ID from session_roster
+        // Method 1: Get students directly from session_roster (preferred)
         const { data: rosterData } = await supabase
           .from('session_roster')
-          .select('course_id')
-          .eq('session_id', sessionId)
-          .limit(1)
-        
-        if (rosterData && rosterData.length > 0) {
-          courseId = rosterData[0].course_id
-        }
-      }
-
-      if (courseId) {
-        const { data: enrolledData } = await supabase
-          .from('course_enrollments')
           .select(`
             student:students(id, name, student_number, email)
           `)
-          .eq('course_id', courseId)
+          .eq('session_id', sessionId)
         
-        setEnrolledStudents(enrolledData?.map(e => e.student) || [])
+        if (rosterData && rosterData.length > 0) {
+          setEnrolledStudents(rosterData.map(r => r.student).filter(Boolean))
+        } else {
+          // Method 2: Fallback - try to find course through timetable entries
+          const { data: timetableData } = await supabase
+            .from('timetable_entries')
+            .select('course_id')
+            .eq('professor_id', sessionData.professor_id)
+            .eq('classroom_id', sessionData.classroom_id)
+            .eq('day_of_week', new Date(sessionData.start_time).getDay())
+            .limit(1)
+          
+          if (timetableData && timetableData.length > 0) {
+            const courseId = timetableData[0].course_id
+            const { data: enrolledData } = await supabase
+              .from('course_enrollments')
+              .select(`
+                student:students(id, name, student_number, email)
+              `)
+              .eq('course_id', courseId)
+            
+            setEnrolledStudents(enrolledData?.map(e => e.student).filter(Boolean) || [])
+          } else {
+            setEnrolledStudents([])
+          }
+        }
       } else {
         setEnrolledStudents([])
       }
@@ -94,8 +117,24 @@ export default function SessionDetail() {
   const present = useMemo(() => attendance.filter(a => a.status === 'present'), [attendance])
   const late = useMemo(() => attendance.filter(a => a.status === 'late'), [attendance])
   
-  // Calculate absent students (enrolled but not present or late)
+  // Calculate absent students (those with status = 'absent' in attendance records)
   const absent = useMemo(() => {
+    // First, get students who are marked as absent in attendance records
+    const absentFromAttendance = attendance
+      .filter(a => a.status === 'absent')
+      .map(a => ({
+        id: a.student_id,
+        name: a.student?.name,
+        student_number: a.student?.student_number,
+        email: a.student?.email
+      }))
+    
+    // If we have absent students from attendance records, use those
+    if (absentFromAttendance.length > 0) {
+      return absentFromAttendance
+    }
+    
+    // Fallback: students enrolled but not in attendance records at all
     const attendedStudentIds = attendance.map(a => a.student_id)
     return enrolledStudents.filter(student => !attendedStudentIds.includes(student.id))
   }, [enrolledStudents, attendance])
@@ -153,6 +192,17 @@ export default function SessionDetail() {
   const lateCount = late.length
   const absentCount = absent.length
   const onTimeRate = total ? Math.round((presentCount / total) * 100) : 0
+  
+  // Debug logging
+  console.log('Attendance Debug:', {
+    total,
+    presentCount,
+    lateCount,
+    absentCount,
+    enrolledStudents: enrolledStudents.length,
+    attendanceRecords: attendance.length,
+    absentStudents: absent
+  })
 
   return (
     <div className="space-y-6">
@@ -188,14 +238,18 @@ export default function SessionDetail() {
             No enrolled students found. This might mean:
           </p>
           <ul className="text-sm text-yellow-600 mt-2 list-disc list-inside">
-            <li>The course has no enrolled students</li>
-            <li>The session_roster table doesn't have course_id populated</li>
-            <li>The course_enrollments table is empty</li>
+            <li>The session_roster table is empty for this session</li>
+            <li>The course has no enrolled students in course_enrollments</li>
+            <li>No timetable entries found for this professor/classroom combination</li>
+            <li>The session was not properly initialized with enrolled students</li>
           </ul>
           <div className="mt-3 text-xs text-yellow-600">
             <strong>Session ID:</strong> {sessionId}<br/>
-            <strong>Course ID from roster:</strong> {enrolledStudents.length > 0 ? 'Found' : 'Not found'}<br/>
-            <strong>Enrolled students count:</strong> {enrolledStudents.length}
+            <strong>Students in session_roster:</strong> {enrolledStudents.length > 0 ? 'Found' : 'Not found'}<br/>
+            <strong>Enrolled students count:</strong> {enrolledStudents.length}<br/>
+            <strong>Session Subject:</strong> {session?.subject || 'Not set'}<br/>
+            <strong>Professor ID:</strong> {session?.professor_id || 'Not found'}<br/>
+            <strong>Classroom ID:</strong> {session?.classroom_id || 'Not found'}
           </div>
         </div>
       )}

@@ -133,6 +133,16 @@ export default function AttendancePage() {
           course.lastSession = session.start_time
         }
 
+        // Get expected enrolled students for this session from session_roster
+        const { data: rosterData } = await supabase
+          .from('session_roster')
+          .select('student_id')
+          .eq('session_id', session.id)
+
+        const expectedEnrolled = rosterData?.length || 0
+        const absentCount = Math.max(0, expectedEnrolled - totalAttended)
+        const attendanceRate = expectedEnrolled > 0 ? Math.round((totalAttended / expectedEnrolled) * 100) : 0
+
         // Add session summary
         course.sessions.push({
           sessionId: session.id,
@@ -142,26 +152,21 @@ export default function AttendancePage() {
           classroom: (session.classroom as any)?.name || 'Unknown',
           presentCount,
           lateCount,
-          absentCount: 0, // We'll calculate this later
-          totalEnrolled: totalAttended, // For now, use attended count as enrolled
-          attendanceRate: 100 // Since we only count those who attended
+          absentCount,
+          totalEnrolled: expectedEnrolled,
+          attendanceRate
         })
       }
 
       // Calculate final statistics for each course
       const courseAttendanceData: CourseAttendance[] = []
       for (const course of Array.from(courseMap.values())) {
-        // Calculate total enrolled as the maximum number of students who attended any session
+        // Calculate total enrolled as the maximum number of students enrolled in any session
         course.totalEnrolled = Math.max(...course.sessions.map((s: SessionSummary) => s.totalEnrolled), 0)
         
-        // Calculate absent count for each session
-        course.sessions.forEach((session: SessionSummary) => {
-          session.absentCount = Math.max(0, course.totalEnrolled - (session.presentCount + session.lateCount))
-        })
-        
-        // Calculate overall attendance rate
-        const totalPossibleAttendance = course.totalEnrolled * course.totalSessions
-        const totalActualAttendance = course.presentCount + course.lateCount
+        // Calculate overall attendance rate based on actual session data
+        const totalPossibleAttendance = course.sessions.reduce((sum, s) => sum + s.totalEnrolled, 0)
+        const totalActualAttendance = course.sessions.reduce((sum, s) => sum + s.presentCount + s.lateCount, 0)
         course.attendanceRate = totalPossibleAttendance > 0 ? 
           Math.round((totalActualAttendance / totalPossibleAttendance) * 100) : 0
         
